@@ -130,6 +130,7 @@ services:
 
     App\Service\GithubService:
         class: App\Service\GithubService
+        public: true
         arguments:
             # Absolute path to local directory where github core pull request files are put
             $pullRequestPatchPath: '%kernel.project_dir%/var/patches/'

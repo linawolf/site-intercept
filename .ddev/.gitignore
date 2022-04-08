@@ -19,7 +19,6 @@
 /commands/web/xdebug
 /commands/web/live
 /config.*.y*ml
-/db-build/postgres_healthcheck.sh
 /db_snapshots
 /import-db
 /import.yaml

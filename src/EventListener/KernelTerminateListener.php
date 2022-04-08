@@ -24,6 +24,6 @@ class KernelTerminateListener
 
     public function __invoke(): void
     {
-        $this->repository->deleteOldEntries();
+//        $this->repository->deleteOldEntries();
     }
 }

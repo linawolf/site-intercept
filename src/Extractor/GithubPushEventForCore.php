@@ -56,6 +56,26 @@ class GithubPushEventForCore
     public ?string $repositoryFullName = null;
 
     /**
+     * @var string[]
+     */
+    public array $addedFiles = [];
+
+    /**
+     * @var string[]
+     */
+    public array $modifiedFiles = [];
+
+    /**
+     * @var string[]
+     */
+    public array $removedFiles = [];
+
+    public string $headCommitTitle = '';
+
+    public int $issueNumber = 0;
+
+
+    /**
      * Extract information.
      *
      * @param array $fullPullRequestInformation Optional, this object is used in consumer, via json serializer, too.
@@ -73,6 +93,13 @@ class GithubPushEventForCore
                 $this->type = self::TYPE_PATCH;
                 $this->sourceBranch = $this->getSourceBranch($fullPullRequestInformation['ref']);
                 $this->targetBranch = BranchUtility::resolveCoreSplitBranch($this->sourceBranch);
+                $this->addedFiles = $fullPullRequestInformation['head_commit']['added'] ?? [];
+                $this->modifiedFiles = $fullPullRequestInformation['head_commit']['modified'] ?? [];
+                $this->removedFiles = $fullPullRequestInformation['head_commit']['removed'] ?? [];
+                $matches = [];
+                preg_match('/Resolves:\s+?#(\d+)/', $fullPullRequestInformation['head_commit']['message'], $matches);
+                $this->issueNumber = (int)($matches[1] ?? 0);
+                $this->headCommitTitle = explode("\n", $fullPullRequestInformation['head_commit']['message'] ?? '', 2)[0] ?? '';
             } elseif ($this->isPushedTag($fullPullRequestInformation)) {
                 $this->type = self::TYPE_TAG;
                 $this->sourceBranch = $fullPullRequestInformation['repository']['master_branch'] ?? 'main';

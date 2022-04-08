@@ -18,6 +18,7 @@ use App\Extractor\BambooBuildTriggered;
 use App\Extractor\DeploymentInformation;
 use App\Extractor\GithubCorePullRequest;
 use App\Extractor\GithubPullRequestIssue;
+use App\Extractor\GithubPushEventForCore;
 use App\Extractor\GithubUserData;
 use App\Extractor\GitPatchFile;
 use RuntimeException;
@@ -144,6 +145,87 @@ class GithubService
         ]);
     }
 
+    public function handleGithubIssuesForRstFiles(GithubPushEventForCore $pushEvent): void
+    {
+        $added = $this->filterRstChanges($pushEvent->addedFiles);
+        $modified = $this->filterRstChanges($pushEvent->modifiedFiles);
+        $removed = $this->filterRstChanges($pushEvent->removedFiles);
+        if (count($added) + count($modified) + count($removed) === 0) {
+            return;
+        }
+        $client = $this->client;
+        $body = [];
+        if ([] !== $added) {
+            $body[] = 'Added:' . "\n";
+            $added = array_map(function(string $file) {
+                        return '[' . $file . '](https://github.com/TYPO3/typo3/tree/main/' . $file . ')';
+            }, $added);
+            $body[] = '* ' . implode("\n* ", $added);
+            $body[] = "\n";
+        }
+
+        if ([] !== $modified) {
+            $body[] = 'Modified:' . "\n";
+            $modified = array_map(function (string $file) {
+                return '[' . $file . '](https://github.com/TYPO3/typo3/tree/main/' . $file . ')';
+            }, $modified);
+            $body[] = '* ' . implode("\n* ", $modified);
+            $body[] = "\n";
+        }
+
+        if ([] !== $removed) {
+            $body[] = 'Removed:' . "\n";
+            $removed = array_map(static function (string $file) {
+                return '[' . $file . '](https://github.com/TYPO3/typo3/tree/main/' . $file . ')';
+            }, $removed);
+            $body[] = '* ' . implode("\n* ", $removed);
+            $body[] = "\n";
+        }
+        $search = [
+           'q' => 'label:'. $pushEvent->issueNumber .' is:issue repo:andreasfernandez/Changelog-To-Doc',
+        ];
+        $query = http_build_query($search);
+        $response = $client->get('https://api.github.com/search/issues?' . $query, [
+            'headers' => [
+                'Authorization' => 'token ' . $this->accessKey
+            ],
+        ]);
+        $contents = $response->getBody()->getContents();
+        $decoded = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
+        $existingIssueCommentUrl = $decoded['items']['0']['comments_url'] ?? null;
+        if (null !== $existingIssueCommentUrl) {
+            $client->post(
+                $existingIssueCommentUrl,
+                [
+                    'headers' => [
+                        'Authorization' => 'token ' . $this->accessKey
+                    ],
+                    'json' => [
+                        'body' => implode("\n", $body),
+                    ],
+                ]
+            );
+        } else {
+            $client->post(
+                'https://api.github.com/repos/andreasfernandez/Changelog-To-Doc/issues',
+                [
+                    'headers' => [
+                        'Authorization' => 'token ' . $this->accessKey
+                    ],
+                    'json' => [
+                        'title' => $pushEvent->headCommitTitle,
+                        'body' => implode("\n", $body),
+                        'labels' => [
+                            (string)$pushEvent->issueNumber
+                        ]
+                    ]
+                ]
+            );
+        }
+
+
+    }
+
     /**
      * Triggers new build in project TYPO3-Documentation/t3docs-ci-deploy
      *
@@ -224,5 +306,16 @@ class GithubService
             ]
         );
         return new BambooBuildTriggered(json_encode(['buildResultKey' => $id]));
+    }
+
+    /**
+     * @param GithubPushEventForCore $pushEvent
+     * @return void
+     */
+    private function filterRstChanges(array $files): array
+    {
+        return array_filter($files, static function (string $file) {
+            return str_ends_with($file, '.rst');
+        });
     }
 }
